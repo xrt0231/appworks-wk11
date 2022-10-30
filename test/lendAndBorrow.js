@@ -47,18 +47,15 @@ describe("lendAndBorrow", function() {
             18,
             accounts[0].address
         );
+        
         await cerc20.deployed();
         console.log("4) Cerc20 exchg% has set!")
 
         //Mint 100 CToken as a lender and redeem 100 CToken later on 
         const mintAmount = ethers.utils.parseUnits("100", 18);
-        await erc20.approve(cerc20.address, mintAmount); // 允許testCErc20合約地址轉出owner的100個testErc20 token
-        await cerc20.mint(mintAmount); // owner開始mint 100 個 testCErc20 token
-
-        // CErc20合約裡應該要收到100個testErc20 token
-        // let erc20BalanceOfCErc20Contract = await erc20.balanceOf(
-        // cerc20.address
-        // );
-        //expect(erc20BalanceOfCErc20Contract).to.equal(MINT_AMOUNT);
+        await erc20.approve(cerc20.address, mintAmount); 
+        await comptroller._supportMarket(cerc20.address);
+        await cerc20.mint(mintAmount); 
+        console.log("5) user1 lend 100 EC20TK to compound contract!");
     })
 });

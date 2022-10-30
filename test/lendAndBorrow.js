@@ -1,7 +1,8 @@
 const { ethers } = require("hardhat");
 const hre = require("hardhat");
+const { expect } = require("chai");
 
-describe("lendAndBorrow", function() {
+describe("<<<<lendAndBorrow>>>>", function() {
    
     it("erc20, interestRate, Ctoken and Oralce preparations", async function () {
         const [owner] = await ethers.getSigners();
@@ -56,6 +57,20 @@ describe("lendAndBorrow", function() {
         await erc20.approve(cerc20.address, mintAmount); 
         await comptroller._supportMarket(cerc20.address);
         await cerc20.mint(mintAmount); 
-        console.log("5) user1 lend 100 EC20TK to compound contract!");
+        expect(await cerc20.balanceOf(accounts[0].address)).to.equal(ethers.utils.parseUnits("100", 18));
+        let user1HoldCToken = await erc20.balanceOf(
+            cerc20.address
+          );
+        console.log("5) user1 lend 100 EC20TK to compound contract!", user1HoldCToken);
+    
+        await cerc20.approve(cerc20.address, mintAmount);
+        await comptroller._supportMarket(cerc20.address);
+        await cerc20.redeem(mintAmount);
+
+        contractHoldEC20TK = await erc20.balanceOf(
+            erc20.address
+          );
+          expect(contractHoldEC20TK).to.equal(0);
+          console.log("6) contract holds EC20TK: ", user1HoldCToken);
     })
 });

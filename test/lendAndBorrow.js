@@ -1,12 +1,11 @@
 const { ethers } = require("hardhat");
 const hre = require("hardhat");
 const { expect } = require("chai");
+const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 
-describe("<<<<lendAndBorrow>>>>", function() {
-   
-    it("erc20, interestRate, Ctoken and Oralce preparations", async function () {
-        const [owner] = await ethers.getSigners();
+describe("A simple Compound code", function() {
 
+    async function deployErc20InterestRateCtokenOracleFixture(){
         //ERC20 mint
         const Erc20 = await hre.ethers.getContractFactory("Erc20");
         const erc20 = await Erc20.deploy(
@@ -14,9 +13,6 @@ describe("<<<<lendAndBorrow>>>>", function() {
             "ERC20 Token",
             "EC20TK"
         );
-        await erc20.deployed();
-        await erc20.totalSupply();
-        console.log("1) EC20TK mint has done!")
        
         //Interest% set
         const InterestRateModel = await ethers.getContractFactory("WhitePaperInterestRateModel")
@@ -24,16 +20,11 @@ describe("<<<<lendAndBorrow>>>>", function() {
             ethers.utils.parseUnits("0", 18),
             ethers.utils.parseUnits("0", 18),
             );
-        await interestRateModel.deployed();
-        console.log("2) interest% has done!")
         
         //Comptroller deployment
         const Comptroller = await ethers.getContractFactory("Comptroller");
         const comptroller = await Comptroller.deploy();
-        await comptroller.deployed();
         comptroller._setPriceOracle("SimplePriceOracle");
-        console.log("3) Comptroller has done!");
-
         
         //Cerc20 exchg% setting
         const accounts = await ethers.getSigners();
@@ -48,28 +39,39 @@ describe("<<<<lendAndBorrow>>>>", function() {
             18,
             accounts[0].address
         );
-        
-        await cerc20.deployed();
-        console.log("4) Cerc20 exchg% has set!")
 
-        //Mint 100 CToken as a lender and redeem 100 CToken later on 
+        return { erc20, interestRateModel, comptroller, cerc20, accounts };
+
+    }
+   
+    it("shold support 100 erc20 token to Cerc20 token and to redeem cerc20 token to erc20 token", async function () {
+        const { 
+            erc20,
+            cerc20,
+            comptroller,
+            accounts
+        } = await loadFixture(deployErc20InterestRateCtokenOracleFixture);
+
         const mintAmount = ethers.utils.parseUnits("100", 18);
         await erc20.approve(cerc20.address, mintAmount);
         await comptroller._supportMarket(cerc20.address);
         await cerc20.mint(mintAmount); 
+        
         expect(await cerc20.balanceOf(accounts[0].address)).to.equal(ethers.utils.parseUnits("100", 18));
-        let user1HoldCToken = await erc20.balanceOf(
-            cerc20.address
-          );
-        console.log("5) user1 lend 100 EC20TK to compound contract!", user1HoldCToken);
-    
+
         await comptroller._supportMarket(cerc20.address);
         await cerc20.redeem(mintAmount);
 
-        contractHoldEC20TK = await erc20.balanceOf(
-            erc20.address
-          );
-          expect(contractHoldEC20TK).to.equal(0);
-          console.log("6) contract holds EC20TK: ", contractHoldEC20TK);
-    })
+        expect(await erc20.balanceOf(erc20.address)).to.equal(0);
+    });
+       
+    it("should read the value", async function () {
+        const {
+            erc20,
+            accounts
+        } = await loadFixture(deployErc20InterestRateCtokenOracleFixture);
+
+        await expect(await erc20.balanceOf(accounts[0].address)).to.equal(ethers.utils.parseUnits("1000", 18));
+        //console.log("the address: ", erc20.address);
+    });
 });

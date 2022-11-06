@@ -1,13 +1,8 @@
-# Sample Hardhat Project
+# This is a Compound Protocol practice 
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
-
-Try running some of the following tasks:
+Please do the steps before start to test it:
 
 ```shell
-npx hardhat help
+git clone https://github.com/compound-finance/compound-protocol
 npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.js
 ```

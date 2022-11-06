@@ -54,7 +54,7 @@ describe("<<<<lendAndBorrow>>>>", function() {
 
         //Mint 100 CToken as a lender and redeem 100 CToken later on 
         const mintAmount = ethers.utils.parseUnits("100", 18);
-        await erc20.approve(cerc20.address, mintAmount); 
+        await erc20.approve(cerc20.address, mintAmount);
         await comptroller._supportMarket(cerc20.address);
         await cerc20.mint(mintAmount); 
         expect(await cerc20.balanceOf(accounts[0].address)).to.equal(ethers.utils.parseUnits("100", 18));
@@ -63,7 +63,6 @@ describe("<<<<lendAndBorrow>>>>", function() {
           );
         console.log("5) user1 lend 100 EC20TK to compound contract!", user1HoldCToken);
     
-        await cerc20.approve(cerc20.address, mintAmount);
         await comptroller._supportMarket(cerc20.address);
         await cerc20.redeem(mintAmount);
 
@@ -71,6 +70,6 @@ describe("<<<<lendAndBorrow>>>>", function() {
             erc20.address
           );
           expect(contractHoldEC20TK).to.equal(0);
-          console.log("6) contract holds EC20TK: ", user1HoldCToken);
+          console.log("6) contract holds EC20TK: ", contractHoldEC20TK);
     })
 });

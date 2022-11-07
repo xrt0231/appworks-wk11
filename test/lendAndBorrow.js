@@ -6,12 +6,20 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 describe("A simple Compound code", function() {
 
     async function deployErc20InterestRateCtokenOracleFixture(){
+        //Set diff address
+        const [ owner, user1, user2 ] = await ethers.getSigners();
+
         //ERC20 mint
         const Erc20 = await hre.ethers.getContractFactory("Erc20");
         const erc20 = await Erc20.deploy(
             ethers.utils.parseUnits("1000", 18),
             "ERC20 Token",
             "EC20TK"
+        );
+        const erc20b = await Erc20.deploy(
+            ethers.utils.parseUnits("1000", 18),
+            "ERC20B Token",
+            "EC20TKB"
         );
        
         //Interest% set
@@ -39,13 +47,36 @@ describe("A simple Compound code", function() {
             18,
             accounts[0].address
         );
+        cerc20.deployed();
 
-        return { erc20, interestRateModel, comptroller, cerc20, accounts };
+        const cerc20b = await Cerc20.deploy(
+            erc20b.address,
+            comptroller.address,
+            interestRateModel.address,
+            ethers.utils.parseUnits("1", 18),
+            "ERC20 TokenB",
+            "EC20TKB",
+            18,
+            accounts[0].address
+        );
+        cerc20b.deployed();
+
+        //Set oracle
+        const Oracle = await ethers.getContractFactory("SimplePriceOracle");
+        const oracle = await Oracle.deploy();
+        oracle.deployed();
+        comptroller._setPriceOracle(oracle.address);
+
+        comptroller._supportMarket(cerc20.address);
+        comptroller._supportMarket(cerc20b.address);
+
+        return { owner, user1, user2, erc20, erc20b, interestRateModel, comptroller, cerc20, cerc20b, accounts, oracle };
 
     }
    
     it("shold support 100 erc20 token to Cerc20 token and to redeem cerc20 token to erc20 token", async function () {
         const { 
+            owner,
             erc20,
             cerc20,
             comptroller,
@@ -57,21 +88,72 @@ describe("A simple Compound code", function() {
         await comptroller._supportMarket(cerc20.address);
         await cerc20.mint(mintAmount); 
         
-        expect(await cerc20.balanceOf(accounts[0].address)).to.equal(ethers.utils.parseUnits("100", 18));
+        expect(await cerc20.balanceOf(owner.address)).to.equal(ethers.utils.parseUnits("100", 18));
 
         await comptroller._supportMarket(cerc20.address);
         await cerc20.redeem(mintAmount);
 
         expect(await erc20.balanceOf(erc20.address)).to.equal(0);
     });
-       
-    it("should read the value", async function () {
+
+    it("should set tokens price and send token to users & user1 mint cerc20b by 1 erc20b", async function() {
         const {
-            erc20,
-            accounts
+            owner,
+            user1,
+            user2,
+            erc20, 
+            erc20b, 
+            interestRateModel, 
+            comptroller, 
+            cerc20, 
+            cerc20b, 
+            accounts,
+            oracle
         } = await loadFixture(deployErc20InterestRateCtokenOracleFixture);
 
-        await expect(await erc20.balanceOf(accounts[0].address)).to.equal(ethers.utils.parseUnits("1000", 18));
-        //console.log("the address: ", erc20.address);
+        //Set cerc20 token price to 1 & set cerc20b price to 100
+        const cerc20PriceSetting = await oracle.setUnderlyingPrice(cerc20.address, ethers.utils.parseUnits("1", 18));
+        const cerc20bPriceSetting = await oracle.setUnderlyingPrice(cerc20b.address, ethers.utils.parseUnits("100", 18));
+
+        //Set cerc20b collateral %
+        const cerc20bCollaterallRateSetting = await comptroller._setCollateralFactor(cerc20b.address, ethers.utils.parseUnits("0.5", 18));
+
+        //Send erc20b to user1
+        await erc20b.transfer(user1.address, ethers.utils.parseUnits("1", 18));
+
+        //Send erc20 to user2
+        await erc20.transfer(user2.address, ethers.utils.parseUnits("100", 18));
+        
+        expect(await erc20b.balanceOf(user1.address)).to.equal(ethers.utils.parseUnits("1", 18));
+        expect(await erc20.balanceOf(user2.address)).to.equal(ethers.utils.parseUnits("100", 18));
+       
+        await erc20b.connect(user1).approve(cerc20b.address, ethers.utils.parseUnits("1", 18));
+        await erc20.connect(user2).approve(cerc20.address, ethers.utils.parseUnits("100", 18));
+       
+        const mintCerc20byOneErc20 = await cerc20b.connect(user1).mint(ethers.utils.parseUnits("1", 18));
+        await cerc20.connect(user2).mint(ethers.utils.parseUnits("100", 18));
+       
+        //user1 use cerc20b as collateral
+        await comptroller.connect(user1).enterMarkets([cerc20b.address]);
+
+        //User1 borrow 50 x cerc20 by erc20b as collateral
+        const borrow = await cerc20.connect(user1).borrow(ethers.utils.parseUnits("50", 18));
+        expect(await cerc20.getCash()).to.equal(ethers.utils.parseUnits("50", 18));
+    });
+
+    it("should 0", async function () {
+        const {
+            owner,
+            user1,
+            user2,
+            erc20, 
+            erc20b, 
+            interestRateModel, 
+            comptroller, 
+            cerc20, 
+            cerc20b, 
+            accounts,
+            oracle
+        } = await loadFixture(deployErc20InterestRateCtokenOracleFixture);
     });
 });

@@ -4,5 +4,18 @@ Please do the steps before start to test it:
 
 ```shell
 git clone https://github.com/compound-finance/compound-protocol
-npx hardhat test
 ```
+
+Please run scenario1 for liquidation by changing collateral rate 
+
+```shell
+npx hardhat test ./test/Scenario1.js
+```
+
+Please run scenario2 for liquidation by changing token price 
+
+```shell
+npx hardhat test ./test/Scenario2.js
+```
+
+

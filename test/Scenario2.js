@@ -143,26 +143,23 @@ describe("A simple Compound code", function() {
         //User1 borrow 50 x cerc20 by erc20b as collateral
         const borrow = await cerc20.connect(user1).borrow(ethers.utils.parseUnits("50", 18));
         expect(await cerc20.getCash()).to.equal(ethers.utils.parseUnits("50", 18));
-        
+        //=========================================================================
+
+        //change the token price
+        await oracle.setUnderlyingPrice(cerc20b.address, ethers.utils.parseUnits("30", 18));
+
         //Incentive plan
         await comptroller._setLiquidationIncentive(ethers.utils.parseUnits("1", 18));
         
         //Set % of available liquidation
         await comptroller._setCloseFactor(ethers.utils.parseUnits("0.5", 18));
         
-        //Adjust collateral %
-        await comptroller._setCollateralFactor(cerc20b.address, ethers.utils.parseUnits("0.2", 18));
-        
         await erc20.transfer(user2.address, ethers.utils.parseUnits("20", 18));
         
         await erc20.connect(user2).approve(cerc20.address, ethers.utils.parseUnits("20", 18));
         
-        //Liquidation scenario
+        //Liquidation scenario with changing the token price
         console.log("scenario starts!");
         const liquidateScenario = await cerc20.connect(user2).liquidateBorrow(user1.address, ethers.utils.parseUnits("20", 18), cerc20b.address);
-    });
-
-    it("should let user2 to liquidate user1 by adjusting the collatral factor from 0.5 to 0.2 of erc20b", async function () {
-        
     });
 });

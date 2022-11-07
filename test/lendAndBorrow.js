@@ -96,7 +96,9 @@ describe("A simple Compound code", function() {
         expect(await erc20.balanceOf(erc20.address)).to.equal(0);
     });
 
-    it("should set tokens price and send token to users & user1 mint cerc20b by 1 erc20b", async function() {
+    it("should set tokens price and send token to users & user1 mint cerc20b by 1 erc20b & let user2 to liquidate user1 by adjusting the collatral factor from 0.5 to 0.2 of erc20b", 
+    
+    async function() {
         const {
             owner,
             user1,
@@ -132,28 +134,35 @@ describe("A simple Compound code", function() {
        
         const mintCerc20byOneErc20 = await cerc20b.connect(user1).mint(ethers.utils.parseUnits("1", 18));
         await cerc20.connect(user2).mint(ethers.utils.parseUnits("100", 18));
+
+        console.log("scenario preparation done!");
        
         //user1 use cerc20b as collateral
         await comptroller.connect(user1).enterMarkets([cerc20b.address]);
-
+        
         //User1 borrow 50 x cerc20 by erc20b as collateral
         const borrow = await cerc20.connect(user1).borrow(ethers.utils.parseUnits("50", 18));
         expect(await cerc20.getCash()).to.equal(ethers.utils.parseUnits("50", 18));
+        
+        //Incentive plan
+        await comptroller._setLiquidationIncentive(ethers.utils.parseUnits("1", 18));
+        
+        //Set % of available liquidation
+        await comptroller._setCloseFactor(ethers.utils.parseUnits("0.5", 18));
+        
+        //Adjust collateral %
+        await comptroller._setCollateralFactor(cerc20b.address, ethers.utils.parseUnits("0.2", 18));
+        
+        await erc20.transfer(user2.address, ethers.utils.parseUnits("20", 18));
+        
+        await erc20.connect(user2).approve(cerc20.address, ethers.utils.parseUnits("20", 18));
+        
+        //Liquidation scenario
+        console.log("scenario starts!");
+        const liquidateScenario = await cerc20.connect(user2).liquidateBorrow(user1.address, ethers.utils.parseUnits("20", 18), cerc20b.address);
     });
 
-    it("should 0", async function () {
-        const {
-            owner,
-            user1,
-            user2,
-            erc20, 
-            erc20b, 
-            interestRateModel, 
-            comptroller, 
-            cerc20, 
-            cerc20b, 
-            accounts,
-            oracle
-        } = await loadFixture(deployErc20InterestRateCtokenOracleFixture);
+    it("should let user2 to liquidate user1 by adjusting the collatral factor from 0.5 to 0.2 of erc20b", async function () {
+        
     });
 });

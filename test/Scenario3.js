@@ -1,13 +1,12 @@
 const { ethers } = require("hardhat");
-const parseUnits = require("ethers/lib/utils");
+const { parseUnits } = require("ethers/lib/utils");
 const hre = require("hardhat");
 const { expect } = require("chai");
 const { loadFixture, impersonateAccount } = require("@nomicfoundation/hardhat-network-helpers");
 
-describe("A simple Compound code", function() {
+describe("Flash loan process: liquidate, flashloan, uniswap ", function() {
 
     require('dotenv').config();
-    console.log(process.env);
 
     const BINANCE_WALLET_ADDRESS = '0xF977814e90dA44bFA03b6295A0616a897441aceC';
     const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -42,9 +41,19 @@ describe("A simple Compound code", function() {
 
         //Set diff wallet addresses
         const [ owner, user1, user2 ] = await ethers.getSigners();
+        console.log(owner.address);
 
-        // comptroller._supportMarket(cerc20.address);
-        // comptroller._supportMarket(cerc20b.address);
+        //Set comptroller for init
+        const Comptroller = await ethers.getContractFactory("Comptroller");
+        const comptroller = await Comptroller.deploy();
+        await comptroller.deployed();
+        console.log('Set comptroller!');
+
+        //Set oracle for init
+        const Oracle = await ethers.getContractFactory("SimplePriceOracle");
+        const oracle = await Oracle.deploy();
+        oracle.deployed();
+        console.log('Set oracle!');
 
         //Set interest%
         const InterestRateModel = await ethers.getContractFactory("WhitePaperInterestRateModel")
@@ -56,9 +65,9 @@ describe("A simple Compound code", function() {
 
         //Check uni
         const uni = await ethers.getContractAt("Erc20", UNI_ADDRESS);
-        
+
+
         //Create CUSDC
-        const accounts = await ethers.getImpersonatedSigner();
         const Cerc20 = await ethers.getContractFactory("CErc20Immutable");
         const cUsdc = await Cerc20.deploy(
             usdc.address,
@@ -68,7 +77,7 @@ describe("A simple Compound code", function() {
             "CUSDC",
             "cUsdc",
             18,
-            accounts[0].address
+            owner.address
         );
         await cUsdc.deployed();
         console.log('CUSDC created!');
@@ -82,34 +91,25 @@ describe("A simple Compound code", function() {
             "CUNI",
             "cUni",
             18,
-            accounts[0].address
+            owner.address
         );
         cUni.deployed();
         console.log('CUNI created!');    
 
-
-        //Set oracle
-        const Oracle = await ethers.getContractFactory("SimplePriceOracle");
-        const oracle = await Oracle.deploy();
-        oracle.deployed();
-        await oracle.setUnderlyingPrice(cUsdc.address, USDC_PRICE);
-        await oracle.setUnderlyingPrice(cUni.address, UNI_PRICE);
-        console.log('Set oracle!');
-        // comptroller._setPriceOracle(oracle.address);
-
-
-        //Set comptroller
-        const Comptroller = await ethers.getContractFactory("Comptroller");
-        const comptroller = await Comptroller.deploy();
-        await comptroller.deployed();
-        comptroller._setPriceOracle("SimplePriceOracle");
+        //Set comptroller more
+        comptroller._setPriceOracle(oracle.address);
         await comptroller._supportMarket(cUsdc.address);
         await comptroller._supportMarket(cUni.address);
         await comptroller.enterMarkets([cUni.address]);
         await comptroller._setCollateralFactor(cUni.address, UNI_COLLATERAL_FACTOR);
         await comptroller._setCloseFactor(CLOSE_FACTOR);
         await comptroller._setLiquidationIncentive(LIQUIDATION_INCENTIVE);
-        console.log('Set comptroller!');
+        console.log('Set comptroller more!');
+
+        //Set oracle more
+        await oracle.setUnderlyingPrice(cUsdc.address, USDC_PRICE);
+        await oracle.setUnderlyingPrice(cUni.address, UNI_PRICE);
+        console.log('Set oracle more!');
 
         return { owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle };
     }
@@ -134,95 +134,23 @@ describe("A simple Compound code", function() {
     async function borrowUSDCFixture() {
         const { owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle, binanceWalletImpersonate } = await loadFixture(impersonateFixture);
         
-        
+        //User1 supply 5000 USDC
+        await usdc.connect(user1).approve(cUsdc.address, USDC_AMOUNT);
+        await cUsdc.connect(user1).mint(USDC_AMOUNT);
+
+        //Owner address supply 1000 UNI as collateral and borrow 5000 USDC
+        await uni.approve(cUni.address, UNI_AMOUNT);
+        await cUni.mint(UNI_AMOUNT);
+
+        await cUsdc.borrow(USDC_AMOUNT);
+
+        return { owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle};
     } 
    
-    it("shold support 100 erc20 token to Cerc20 token and to redeem cerc20 token to erc20 token", async function () {
+    it("shold do flash loan:", async function () {
         const { 
-            owner,
-            erc20,
-            cerc20,
-            comptroller,
-            accounts
-        } = await loadFixture(deployErc20InterestRateCtokenOracleFixture);
-
-        const mintAmount = ethers.utils.parseUnits("100", 18);
-        await erc20.approve(cerc20.address, mintAmount);
-        await comptroller._supportMarket(cerc20.address);
-        await cerc20.mint(mintAmount); 
+            owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle } = await loadFixture(deployFixture);
         
-        expect(await cerc20.balanceOf(owner.address)).to.equal(ethers.utils.parseUnits("100", 18));
-
-        await comptroller._supportMarket(cerc20.address);
-        await cerc20.redeem(mintAmount);
-
-        expect(await erc20.balanceOf(erc20.address)).to.equal(0);
     });
 
-    it("should set tokens price and send token to users & user1 mint cerc20b by 1 erc20b & let user2 to liquidate user1 by adjusting the collatral factor from 0.5 to 0.2 of erc20b", 
-    
-    async function() {
-        const {
-            owner,
-            user1,
-            user2,
-            erc20, 
-            erc20b, 
-            interestRateModel, 
-            comptroller, 
-            cerc20, 
-            cerc20b, 
-            accounts,
-            oracle
-        } = await loadFixture(deployErc20InterestRateCtokenOracleFixture);
-
-        //Set cerc20 token price to 1 & set cerc20b price to 100
-        const cerc20PriceSetting = await oracle.setUnderlyingPrice(cerc20.address, ethers.utils.parseUnits("1", 18));
-        const cerc20bPriceSetting = await oracle.setUnderlyingPrice(cerc20b.address, ethers.utils.parseUnits("100", 18));
-
-        //Set cerc20b collateral %
-        const cerc20bCollaterallRateSetting = await comptroller._setCollateralFactor(cerc20b.address, ethers.utils.parseUnits("0.5", 18));
-
-        //Send erc20b to user1
-        await erc20b.transfer(user1.address, ethers.utils.parseUnits("1", 18));
-
-        //Send erc20 to user2
-        await erc20.transfer(user2.address, ethers.utils.parseUnits("100", 18));
-        
-        expect(await erc20b.balanceOf(user1.address)).to.equal(ethers.utils.parseUnits("1", 18));
-        expect(await erc20.balanceOf(user2.address)).to.equal(ethers.utils.parseUnits("100", 18));
-       
-        await erc20b.connect(user1).approve(cerc20b.address, ethers.utils.parseUnits("1", 18));
-        await erc20.connect(user2).approve(cerc20.address, ethers.utils.parseUnits("100", 18));
-       
-        const mintCerc20byOneErc20 = await cerc20b.connect(user1).mint(ethers.utils.parseUnits("1", 18));
-        await cerc20.connect(user2).mint(ethers.utils.parseUnits("100", 18));
-
-        console.log("scenario preparation done!");
-       
-        //user1 use cerc20b as collateral
-        await comptroller.connect(user1).enterMarkets([cerc20b.address]);
-        
-        //User1 borrow 50 x cerc20 by erc20b as collateral
-        const borrow = await cerc20.connect(user1).borrow(ethers.utils.parseUnits("50", 18));
-        expect(await cerc20.getCash()).to.equal(ethers.utils.parseUnits("50", 18));
-        //=========================================================================
-
-        //change the token price
-        await oracle.setUnderlyingPrice(cerc20b.address, ethers.utils.parseUnits("30", 18));
-
-        //Incentive plan
-        await comptroller._setLiquidationIncentive(ethers.utils.parseUnits("1", 18));
-        
-        //Set % of available liquidation
-        await comptroller._setCloseFactor(ethers.utils.parseUnits("0.5", 18));
-        
-        await erc20.transfer(user2.address, ethers.utils.parseUnits("20", 18));
-        
-        await erc20.connect(user2).approve(cerc20.address, ethers.utils.parseUnits("20", 18));
-        
-        //Liquidation scenario with changing the token price
-        console.log("scenario starts!");
-        const liquidateScenario = await cerc20.connect(user2).liquidateBorrow(user1.address, ethers.utils.parseUnits("20", 18), cerc20b.address);
-    });
 });

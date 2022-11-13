@@ -4,6 +4,7 @@ Please do the steps before start to test it:
 
 ```shell
 git clone https://github.com/compound-finance/compound-protocol
+git clone https://github.com/aave/protocol-v2.git
 ```
 
 Please run scenario 1 for liquidation by changing collateral rate 

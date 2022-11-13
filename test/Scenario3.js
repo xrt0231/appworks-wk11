@@ -11,7 +11,7 @@ describe("Flash loan process: liquidate, flashloan, uniswap ", function() {
     const BINANCE_WALLET_ADDRESS = '0xF977814e90dA44bFA03b6295A0616a897441aceC';
     const USDC_ADDRESS = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     const UNI_ADDRESS = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984";
-    const USDC_PRICE = parseUnits('1', 18 + (18 - 6));; //due to USDC has 6 decimals 
+    const USDC_PRICE = parseUnits('1', 18 + (18 - 6)); //due to USDC has 6 decimals 
     const UNI_PRICE = parseUnits('10', 18);
     const UNI_COLLATERAL_FACTOR = parseUnits('0.5', 18);
     const LIQUIDATION_INCENTIVE = parseUnits('1.08', 18);
@@ -20,7 +20,10 @@ describe("Flash loan process: liquidate, flashloan, uniswap ", function() {
     const USDC_AMOUNT = parseUnits('5000', 6);
     const UNI_AMOUNT = parseUnits('1000', 18);
     const CLOSE_FACTOR = parseUnits("0.5", 18);
-    
+
+    const DROP_UNI_PRICE = parseUnits('6.2', 18);
+    const AAVE_LENDING_POOL_ADDRESS_PROVIDER = '0xB53C1a33016B2DC2fF3653530bfF1848a515c8c5';
+    const UNISWAP_ROUTER = '0xE592427A0AEce92De3Edee1F18E0157C05861564';
 
 
     async function deployFixture(){
@@ -115,16 +118,17 @@ describe("Flash loan process: liquidate, flashloan, uniswap ", function() {
     }
 
     async function impersonateFixture() {
+        
         const { owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle } = await loadFixture(deployFixture);
 
         await impersonateAccount(BINANCE_WALLET_ADDRESS);
         const binanceWalletImpersonate = await ethers.getSigner(BINANCE_WALLET_ADDRESS);
         
         usdc.connect(binanceWalletImpersonate).transfer(user1.address, USDC_AMOUNT);
-        uni.connect(binanceWalletImpersonate).transfer(user2.address, UNI_AMOUNT);
+        uni.connect(binanceWalletImpersonate).transfer(owner.address, UNI_AMOUNT);
 
-        expect(await usdc.balanceOf(user1.address).to.eq(USDC_AMOUNT));
-        expect(await uni.balanceOf(owner.address).to.eq(UNI_AMOUNT));
+        expect(await usdc.balanceOf(user1.address)).to.eq(USDC_AMOUNT);
+        expect(await uni.balanceOf(owner.address)).to.eq(UNI_AMOUNT);
 
         return {owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle, binanceWalletImpersonate };
     }
@@ -144,13 +148,46 @@ describe("Flash loan process: liquidate, flashloan, uniswap ", function() {
 
         await cUsdc.borrow(USDC_AMOUNT);
 
-        return { owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle};
+        expect(await cUsdc.borrow(USDC_AMOUNT)).to.changeTokenBalances(usdc, [owner, cUsdc],[USDC_AMOUNT, -USDC_AMOUNT]);
+
+        return { owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle };
     } 
    
-    it("shold do flash loan:", async function () {
-        const { 
-            owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle } = await loadFixture(deployFixture);
-        
+    it("should do flashloan", async () => {
+        const { owner, user1, user2, usdc, cUsdc, uni, cUni, comptroller, oracle } = await loadFixture(borrowUSDCFixture)
+
+        await oracle.setUnderlyingPrice(cUni.address, DROP_UNI_PRICE);
+
+        const liquidated = await comptroller.getAccountLiquidity(owner.address);
+
+        const borrowBalanced = await cUsdc.callStatic.borrowBalanceCurrent(owner.address);
+
+        const repayAmount = BigInt(borrowBalanced) * CLOSE_FACTOR / BigInt(1e18);
+
+        const FlashLoan = await ethers.getContractFactory("FlashLoanMe");
+        const flashLoan = await FlashLoan.deploy(
+            AAVE_LENDING_POOL_ADDRESS_PROVIDER,
+            UNISWAP_ROUTER
+        );
+        await flashLoan.deployed()
+
+        await flashLoan.connect(user1)
+            .flashLoan(
+                [usdc.address],
+                [repayAmount],
+                [0],
+                owner.address,
+                cUsdc.address,
+                cUni.address,
+                uni.address
+            );
+
+        const reward = await usdc.balanceOf(flashLoan.address)
+
+        expect(reward).to.gt(0);
+
+        console.log(`flashLoan liqudate reward: ${reward}`)
     });
+
 
 });

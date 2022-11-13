@@ -17,5 +17,10 @@ Please run scenario 2 for liquidation by changing token price
 ```shell
 npx hardhat test ./test/Scenario2.js
 ```
+Please run scenario 3 for liquidation by using flash loan 
+
+```shell
+npx hardhat test ./test/Scenario3.js
+```
 
 

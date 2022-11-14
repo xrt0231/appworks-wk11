@@ -90,7 +90,6 @@ describe("A simple Compound code", function() {
         
         expect(await cerc20.balanceOf(owner.address)).to.equal(ethers.utils.parseUnits("100", 18));
 
-        await comptroller._supportMarket(cerc20.address);
         await cerc20.redeem(mintAmount);
 
         expect(await erc20.balanceOf(erc20.address)).to.equal(0);
